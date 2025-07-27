@@ -11,6 +11,7 @@ import censys.search
 import socket # For basic port scanning
 import ipaddress # For IP address validation
 import re # For regex, useful for parsing headers
+import os # For os.getcwd() to find api_keys.json automatically
 from urllib.parse import urlparse # For parsing URLs
 from colorama import Fore, Style, init # For colored output
 
@@ -113,7 +114,6 @@ WAF_SIGNATURES = {
     }
 }
 
-# Subdomain Enumeration Sources - (Note: Many public APIs have rate limits or require API keys for extensive use.)
 SUBDOMAIN_SOURCES = {
     'virustotal': "https://www.virustotal.com/api/v3/domains/{domain}/subdomains", # Requires VT API key
     'crtsh_subdomains': "https://crt.sh/?q=%25.{domain}&output=json", # Already used for IPs, but good for subdomains too
@@ -539,7 +539,7 @@ def perform_active_scan(target_domain, potential_ips, verbose=False):
                 current_detected_wafs = detect_waf(response.headers, response.text, verbose)
                 if current_detected_wafs:
                     # Print WAFs found on this specific IP with a distinct color (e.g., bright red for alert)
-                    print_colored(f"    {Fore.RED}!!! WAF(s) Detected on {ip} ({scheme}): {', '.join(current_detected_wafs)} !!!{Style.RESET_ALL}", Fore.RED, prefix="    ")
+                    print_colored(f"    {Fore.LIGHTRED_EX}{Style.BRIGHT}!!! WAF(s) Detected on {ip} ({scheme}): {', '.join(current_detected_wafs)} !!!{Style.RESET_ALL}", Fore.LIGHTRED_EX, prefix="    ")
                     detected_wafs.update(current_detected_wafs)
                 elif verbose:
                     print_colored(f"    [WAF] No obvious WAF detected on {ip} ({scheme}).", Fore.LIGHTBLACK_EX, prefix="    ")
@@ -624,9 +624,9 @@ def passive_scan(target, verbose=False, api_keys=None):
     found_subdomains.update(discovered_subdomains)
     if found_subdomains:
         print_colored(f"  [SUCCESS] Subdomain enumeration found {len(found_subdomains)} subdomain(s).", Fore.GREEN, prefix="  ")
+        # Resolve IPs for discovered subdomains
         for subdomain in found_subdomains:
             print_colored(f"    - {subdomain}", Fore.CYAN, prefix="    ")
-            # Resolve IPs for discovered subdomains
             sub_a_records = get_dns_records(subdomain, 'A', verbose)
             found_ips.update(sub_a_records)
             sub_aaaa_records = get_dns_records(subdomain, 'AAAA', verbose)
@@ -657,9 +657,30 @@ def passive_scan(target, verbose=False, api_keys=None):
 # --- Main function: orchestrates the scan ---
 
 def main():
+    # ASCII Art Banner
+    banner = f"""
+{Fore.LIGHTCYAN_EX}{Style.BRIGHT}
+._____________ ____  ___
+|   \______   \\   \/  /
+|   ||     ___/ \     / 
+|   ||    |     /     \ 
+|___||____| /\ /___/\  \
+            \/       \_/
+{Style.RESET_ALL}
+{Fore.MAGENTA}{Style.BRIGHT}        Version: 2{Style.RESET_ALL}
+{Fore.YELLOW}{Style.BRIGHT}        Developer: 0xmun1r{Style.RESET_ALL}
+{Fore.CYAN}{Style.BRIGHT}
+=======================================
+     {Fore.GREEN}WEB APPLICATION FIREWALL DETECTOR{Style.RESET_ALL}{Fore.CYAN}{Style.BRIGHT}
+=======================================
+{Style.RESET_ALL}
+    """
+    print(banner)
+
     parser = argparse.ArgumentParser(
         description=f"{Fore.CYAN}IP.X - An origin IP finder behind WAF and CDN, with WAF detection capabilities.{Style.RESET_ALL}",
-        formatter_class=argparse.RawTextHelpFormatter
+        formatter_class=argparse.RawTextHelpFormatter,
+        add_help=True # Ensure help is always available
     )
 
     parser.add_argument(
@@ -685,20 +706,15 @@ def main():
         "--output",
         type=str,
         metavar="FILE",
-        help="Save the scan results to the specified file."
+        help="Save only potential IPs to the specified file."
     )
     parser.add_argument(
         "--api_keys",
         type=str,
         metavar="FILE",
+        default="api_keys.json", # Automatically looks for api_keys.json in CWD
         help="Path to a file containing API keys (e.g., Shodan, Censys, VirusTotal) in JSON format.\n"
-             "Example JSON content:\n"
-             "{\n"
-             "  \"shodan_api_key\": \"YOUR_SHODAN_API_KEY\",\n"
-             "  \"censys_api_id\": \"YOUR_CENSYS_API_ID\",\n"
-             "  \"censys_api_secret\": \"YOUR_CENSYS_API_SECRET\",\n"
-             "  \"virustotal_api_key\": \"YOUR_VIRUSTOTAL_API_KEY\"\n"
-             "}"
+             "Defaults to 'api_keys.json' in the current directory if not specified."
     )
 
     args = parser.parse_args()
@@ -708,26 +724,36 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    # --- API Keys Auto-Loading Logic ---
     api_keys = {}
-    if args.api_keys:
+    api_keys_path = args.api_keys # This will be 'api_keys.json' by default if not specified
+    
+    # Construct full path if it's not absolute
+    if not os.path.isabs(api_keys_path):
+        api_keys_path = os.path.join(os.getcwd(), api_keys_path)
+
+    if os.path.exists(api_keys_path): # Only attempt to load if file exists
         try:
-            with open(args.api_keys, 'r') as f:
+            with open(api_keys_path, 'r') as f:
                 api_keys = json.load(f)
             if args.verbose:
-                print_colored(f"[*] Successfully loaded API keys from {args.api_keys}", Fore.GREEN)
-        except FileNotFoundError:
-            print_colored(f"Error: API keys file '{args.api_keys}' not found.", Fore.RED, prefix="[ERROR]")
-            sys.exit(1)
+                print_colored(f"[*] Successfully loaded API keys from {api_keys_path}", Fore.GREEN)
         except json.JSONDecodeError:
-            print_colored(f"Error: Invalid JSON format in API keys file '{args.api_keys}'.", Fore.RED, prefix="[ERROR]")
-            sys.exit(1)
+            print_colored(f"Error: Invalid JSON format in API keys file '{api_keys_path}'. API-dependent features will be skipped.", Fore.RED, prefix="[ERROR]")
+        except Exception as e:
+            print_colored(f"Error loading API keys from '{api_keys_path}': {e}. API-dependent features will be skipped.", Fore.RED, prefix="[ERROR]")
+    else:
+        if args.verbose:
+            print_colored(f"API keys file '{api_keys_path}' not found. API-dependent features will be skipped.", Fore.YELLOW)
+
 
     print_colored(f"\n{Fore.LIGHTMAGENTA_EX}IP.X Scan Initiated for: {args.target}{Style.RESET_ALL}", Fore.WHITE, prefix="")
     print_colored(f"Active Mode: {Fore.GREEN if args.active else Fore.RED}{'Enabled' if args.active else 'Disabled'}", Fore.WHITE, prefix="  ")
     print_colored(f"Passive Mode: {Fore.GREEN if args.passive else Fore.RED}{'Enabled' if args.passive else 'Disabled'}", Fore.WHITE, prefix="  ")
     print_colored(f"Verbose Output: {Fore.GREEN if args.verbose else Fore.RED}{'Enabled' if args.verbose else 'Disabled'}", Fore.WHITE, prefix="  ")
     print_colored(f"Output File: {Fore.CYAN}{args.output if args.output else 'None'}", Fore.WHITE, prefix="  ")
-    print_colored(f"API Keys File: {Fore.CYAN}{args.api_keys if args.api_keys else 'None'}", Fore.WHITE, prefix="  ")
+    print_colored(f"API Keys File: {Fore.CYAN}{api_keys_path if api_keys else 'Not loaded'}", Fore.WHITE, prefix="  ")
+
 
     all_found_ips = set()
     detected_wafs_overall = set()
@@ -754,29 +780,20 @@ def main():
         print_colored("No potential origin IPs found.", Fore.YELLOW)
 
     if detected_wafs_overall:
-        print_colored(f"\n{Fore.RED}!!! Detected WAF(s): {', '.join(sorted(list(detected_wafs_overall)))} !!!{Style.RESET_ALL}", Fore.RED, prefix="")
+        print_colored(f"\n{Fore.RED}{Style.BRIGHT}!!! Detected WAF(s): {', '.join(sorted(list(detected_wafs_overall)))} !!!{Style.RESET_ALL}", Fore.RED, prefix="")
     else:
         print_colored("\nNo WAFs detected.", Fore.GREEN)
 
     if args.output:
         try:
             with open(args.output, 'w') as f:
-                f.write(f"IP.X Scan Results for: {args.target}\n")
-                f.write(f"Active Mode: {'Enabled' if args.active else 'Disabled'}\n")
-                f.write(f"Passive Mode: {'Enabled' if args.passive else 'Disabled'}\n")
-                f.write(f"Verbose Output: {'Enabled' if args.verbose else 'Disabled'}\n")
-                f.write("\n--- Potential Origin IPs ---\n")
+                # Only write IPs to the file
                 if all_found_ips:
                     for ip in sorted(list(all_found_ips)):
-                        f.write(f"- {ip}\n")
+                        f.write(f"{ip}\n")
                 else:
                     f.write("No potential origin IPs found.\n")
-                f.write("\n--- WAF Detection ---\n")
-                if detected_wafs_overall:
-                    f.write(f"Detected WAF(s): {', '.join(sorted(list(detected_wafs_overall)))}\n")
-                else:
-                    f.write("No WAFs detected.\n")
-            print_colored(f"\nResults saved to: {args.output}", Fore.GREEN)
+            print_colored(f"\nResults (IPs only) saved to: {args.output}", Fore.GREEN)
         except IOError as e:
             print_colored(f"Error: Could not write to output file '{args.output}': {e}", Fore.RED, prefix="[ERROR]")
 
