@@ -3,3 +3,4 @@ requests
 dnspython
 shodan
 censys
+colorama
