@@ -35,17 +35,15 @@
 
 ---
 
-## 🚀 Installation (No VirtualEnv)
+## `/// 🚀 DEPLOYMENT PROTOCOL //`
+
+### `[+] Installation (No VirtualEnv)`
 
 ```bash
-git clone https://github.com/0xmun1r/IP.X
+git clone [https://github.com/0xmun1r/IP.X](https://github.com/0xmun1r/IP.X)
 cd IP.X
 python3 -m pip install --user -r requirements.txt
 python3 ip_x/cli.py target.com --active --passive --verbose
-
-pipx uninstall IP.X && pipx install . --force   # if any issue run this command
-```
-⚠️ Make sure Python 3.8+ is installed in your Kali/Linux system
 
 Add Your API Keys (Optional, but for full power):
 
@@ -66,7 +64,7 @@ Paste your keys inside, replacing the placeholder text:
 bash
 Copy
 Edit
-python3 ipx.py --target example.com --active --output result.txt
+ IP.X target example.com --active --output result.txt
 🔧 Available Flags
 Flag	Description
 --target	Target domain (e.g., target.com)
@@ -83,11 +81,6 @@ Flag	Description
 `_ The Architect: 0xmun1d _`
 
 ```
-
-
-
-
-
 ---
 
 ## `/// SYSTEM STATUS ///`
@@ -101,7 +94,7 @@ Flag	Description
 
 ```
 ---[ 💾 The Mission: Unveiling the Origin ]---
-```
+
 
 IP.X stands as a **pinnacle Python-driven intelligence framework**, meticulously engineered for the discerning digital investigator. Its prime directive: to **uncover the true origin IP address** of any target domain, even when it's fortified behind the intricate defenses of Web Application Firewalls (WAFs) and Content Delivery Networks (CDNs). More than just an IP retriever, IP.X actively **identifies and classifies the digital guardians** (WAFs) attempting to shield the truth.
 
