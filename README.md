@@ -59,10 +59,155 @@ Flag	Description
 --verbose	Show detailed logs
 --help	Show usage instructions
 
-🖼️ Screenshot (Optional)
-Add a screenshot or terminal demo of the tool in action
 
-           
+```
+**`v1.0 // Code-Name: DIGITAL_VANGUARD`**
+`_ The Architect: 0xmun1d _`
+
+```
+
+
+
+
+
+---
+
+## `/// SYSTEM STATUS ///`
+
+
+*(**Note:** Replace `your-username` in the badge links with your actual GitHub username. You may need to set up GitHub Actions for the Build Status badge to work.)*
+
+-----
+
+## `/// CORE INTEL //`
+
+```
+---[ 💾 The Mission: Unveiling the Origin ]---
+```
+
+IP.X stands as a **pinnacle Python-driven intelligence framework**, meticulously engineered for the discerning digital investigator. Its prime directive: to **uncover the true origin IP address** of any target domain, even when it's fortified behind the intricate defenses of Web Application Firewalls (WAFs) and Content Delivery Networks (CDNs). More than just an IP retriever, IP.X actively **identifies and classifies the digital guardians** (WAFs) attempting to shield the truth.
+
+`-- For those who seek deeper insights, beyond the obvious.`
+
+-----
+
+## `/// THE ENGINE //`
+
+IP.X operates with a calculated fusion of clandestine information gathering and assertive network probing, leveraging a vast network of data sources to construct a comprehensive threat landscape.
+
+### `[ 01 ] -- PASSIVE OPERATIONS: DIGITAL FOOTPRINTING --`
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ >_ Gathering intelligence without direct engagement.         │
+└──────────────────────────────────────────────────────────────┘
+```
+
+  * `🖧 DNS Record Forensics`: Dives into current and historical A (IPv4) and AAAA (IPv6) records, unearthing critical infrastructure footprints.
+  * `📜 Certificate Transparency Logs (crt.sh)`: Scours public SSL/TLS certificate databases, revealing dormant IPs and previously unknown subdomains from past and present certificates.
+  * `🐙 GitHub Pages Fingerprinting`: Identifies custom domains routing to GitHub Pages, a common misconfiguration exposure.
+  * `🔍 Shodan Nexus Query`: Hooks into Shodan's vast database to pull historical IP data, open ports, and organizational footprints.
+  * `📊 Censys Protocol Interrogation`: Interrogates Censys for comprehensive internet-wide scan data, correlating IPs with certificate and DNS metadata.
+  * `🔄 Reverse DNS Chain`: Traces IPs back to associated hostnames via PTR records, often unveiling interconnected infrastructure.
+  * `🌲 Subdomain Swarm Enumeration`: Leverages multiple OSINT sources (crt.sh, VirusTotal, ThreatCrowd) to uncover a broad spectrum of subdomains, and then resolves their corresponding IPs.
+  * `📧 Email Header Forensics (Utility)`: Includes a module to extract potential origin IPs embedded within raw email `Received:` headers – a deep dive into communication metadata.
+
+### `[ 02 ] -- ACTIVE ENGAGEMENTS: PROBING THE VEIL --`
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ >_ Calculated interaction to validate and expose hidden hosts.│
+└──────────────────────────────────────────────────────────────┘
+```
+
+  * `🔌 Port Illumination`: Conducts lightweight scans on standard web ports (80, 443, 8080, 8443) on identified potential IPs, seeking open doors.
+  * `🎭 Host Header Forgery`: Executes direct HTTP/S requests to suspected origin IPs, strategically altering the `Host` header to trick misconfigured servers into revealing their true content, bypassing front-end defenses.
+
+### `[ 03 ] -- WAF DECRYPTION PROTOCOL: SHIELD BREAKER --`
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ >_ Identifying and categorizing the protective layers.       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+IP.X systematically analyzes HTTP response headers, cookies, and even subtle HTML cues against an extensive database of known WAF and CDN signatures. Detected WAFs are **`FLAGGED WITH HIGH VISUAL PROMINENCE`**, providing immediate clarity on the target's defensive strategy.
+
+-----
+
+## `/// TACTICAL EXECUTION //`
+
+Once deployed, `IP.X` is ready for command. API keys from `api_keys.json` will be automatically detected if found in your current working directory.
+
+**`Command Syntax:`**
+
+```bash
+IP.X <target_domain> [--active] [--passive] [--verbose] [--output <filename.txt>]
+```
+
+**`Argument Modifiers:`**
+
+  * `<target_domain>`: The primary target for your digital incursion (e.g., `securehost.com`). `[MANDATORY]`
+  * `--active`: Engage active probing protocols (direct connections, port scans).
+  * `--passive`: Initiate silent intelligence gathering (OSINT, historical data).
+  * `--verbose`: Unveil detailed operational logs during the scan for granular analysis.
+  * `--output <filename.txt>`: Direct the discovered potential IPs into a dedicated log file for post-operation review.
+
+**`Strategic Engagement Scenarios:`**
+
+1.  **`Full Spectrum Dominance (Recommended):`**
+
+    ```bash
+    IP.X target.com --passive --active --verbose --output comprehensive_ips.txt
+    ```
+
+    `>> For an exhaustive deep-dive, leaving no digital shadow unexamined.`
+
+2.  **`Ghost Protocol (Passive Stealth):`**
+
+    ```bash
+    IP.X covert.net --passive --verbose --output stealth_intel.txt
+    ```
+
+    `>> Extract critical intelligence from public archives, maintaining a low profile.`
+
+3.  **`Direct Breach Assessment (Active Probe):`**
+
+    ```bash
+    IP.X highvalue.org --active --verbose
+    ```
+
+    `>> Focused penetration testing on a known vulnerability point or suspected origin.`
+
+4.  **`Rapid Threat Appraisal (Quick Overview):`**
+
+    ```bash
+    IP.X swiftscan.xyz --active --passive
+    ```
+
+    `>> For swift insights into potential IPs and immediate WAF identification.`
+
+5.  **`Accessing the Manual:`**
+
+    ```bash
+    IP.X --help
+    ```
+
+    `>> Consult the operational manual for all available parameters.`
+
+
+
+
+
+## `/// DIGITAL WISDOM //`
+
+> "The difference between a curious mind and a powerful one is action."
+> `— Unknown Architect`
+
+-----
+
+```
+```
 IP.X - The Digital Vanguard
 👨‍💻 Author
 0xmun1r
