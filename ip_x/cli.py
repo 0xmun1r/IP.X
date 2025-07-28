@@ -660,15 +660,17 @@ def main():
     # ASCII Art Banner (UPDATED with Version 1 and Developer 0xmun1d)
     banner = f"""
 {Fore.LIGHTCYAN_EX}{Style.BRIGHT}
-._____________ ____  ___
-|   \______   \\   \/  /
-|   ||     ___/ \     / 
-|   ||    |     /     \ 
-|___||____| /\ /___/\  \
-            \/       \_/
+
+  _____   _____       __   __
+ |_   _| |  __ \      \ \ / /
+   | |   | |__) |      \ V / 
+   | |   |  ___/        > <  
+  _| |_  | |       _   / . \ 
+ |_____| |_|      (_) /_/ \_\
+                                                         
 {Style.RESET_ALL}
-{Fore.MAGENTA}{Style.BRIGHT}        Version: 1{Style.RESET_ALL}
-{Fore.YELLOW}{Style.BRIGHT}        Developer: 0xmun1d{Style.RESET_ALL}
+{Fore.MAGENTA}{Style.BRIGHT}        Version:0.0.1{Style.RESET_ALL}
+{Fore.YELLOW}{Style.BRIGHT}        Developer: 0xmun1r{Style.RESET_ALL}
 {Fore.CYAN}{Style.BRIGHT}
 =======================================
      {Fore.GREEN}WEB APPLICATION FIREWALL DETECTOR{Style.RESET_ALL}{Fore.CYAN}{Style.BRIGHT}
