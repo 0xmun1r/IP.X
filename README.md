@@ -44,9 +44,11 @@ git clone [https://github.com/0xmun1r/IP.X](https://github.com/0xmun1r/IP.X)
 cd IP.X
 python3 -m pip install --user -r requirements.txt
 python3 ip_x/cli.py target.com --active --passive --verbose
-
+```
+```
 Add Your API Keys (Optional, but for full power):
-
+```
+---
 In the current folder (/home/m0n1r/Downloads/IP.X), create a file named api_keys.json.
 
 Open this file with a text editor (like nano api_keys.json or gedit api_keys.json).
@@ -60,27 +62,37 @@ Paste your keys inside, replacing the placeholder text:
   "virustotal_api_key": "YOUR_VIRUTSTOTAL_API_KEY_HERE"
 }
 ```
+---
+
 📂 Usage
-bash
-Copy
-Edit
- IP.X target example.com --active --output result.txt
-🔧 Available Flags
-Flag	Description
---target	Target domain (e.g., target.com)
---active	Enable active probing
---passive	Only use passive techniques
---output	Save results to a file
---silent	Clean output only (no banner/logs)
---verbose	Show detailed logs
---help	Show usage instructions
-
-
 ```
+IP.X --target example.com --active --output result.txt
+```
+🔧 Available Flags
+```
+| Flag        | Description                           |
+| ----------- | ------------------------------------- |
+| `--target`  | 🎯 Target domain (e.g., `target.com`) |
+| `--active`  | 🚀 Enable active probing              |
+| `--passive` | 🕵️ Use passive techniques only       |
+| `--output`  | 💾 Save results to file               |
+| `--silent`  | 🤫 Clean output (no banner/logs)      |
+| `--verbose` | 📢 Detailed logs                      |
+| `--help`    | 📖 Display usage instructions         |
+```
+
+🧪 Scan Examples
+```
+🔍 Passive :  IP.X --target example.com --passive
+⚔️ Active  :  IP.X --target example.com --active --output out.txt
+👻 Silent  :  IP.X --target example.com --active --silent
+💡 Pro Tip  : Combine --active + --output for max power 🔥
+```
+ 
 **`v1.0 // Code-Name: DIGITAL_VANGUARD`**
 `_ The Architect: 0xmun1d _`
 
-```
+
 ---
 
 ## `/// SYSTEM STATUS ///`
@@ -92,13 +104,13 @@ Flag	Description
 
 ## `/// CORE INTEL //`
 
-```
----[ 💾 The Mission: Unveiling the Origin ]---
+
+[ 💾 The Mission: Unveiling the Origin ]---
 
 
 IP.X stands as a **pinnacle Python-driven intelligence framework**, meticulously engineered for the discerning digital investigator. Its prime directive: to **uncover the true origin IP address** of any target domain, even when it's fortified behind the intricate defenses of Web Application Firewalls (WAFs) and Content Delivery Networks (CDNs). More than just an IP retriever, IP.X actively **identifies and classifies the digital guardians** (WAFs) attempting to shield the truth.
 
-`-- For those who seek deeper insights, beyond the obvious.`
+--- For those who seek deeper insights, beyond the obvious.`
 
 -----
 
