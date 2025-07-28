@@ -540,7 +540,7 @@ def perform_active_scan(target_domain, potential_ips, verbose=False):
                 current_detected_wafs = detect_waf(response.headers, response.text, verbose)
                 if current_detected_wafs:
                     # Print WAFs found on this specific IP with a distinct color (e.g., bright red for alert)
-                    print_colored(f"    {Fore.LIGHTRED_EX}{Style.BRIGHT}!!! WAF(s) Detected on {ip} ({scheme}): {', '.join(current_detected_wafs)} !!!{Style.RESET_ALL}", Fore.LIGHTRED_EX, prefix="    ")
+                    print_colored(f"    {Fore.LIGHTRED_EX}{Style.BRIGHT}!!! WAF(s) Detected on {ip} ({scheme}): {', '.join(current_detected_wafs)} !!!{Style.RESET_ALL}", Fore.LIGHTRED_RED, prefix="    ")
                     detected_wafs.update(current_detected_wafs)
                 elif verbose:
                     print_colored(f"    [WAF] No obvious WAF detected on {ip} ({scheme}).", Fore.LIGHTBLACK_EX, prefix="    ")
