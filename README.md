@@ -2,11 +2,9 @@
   <img src="https://github.com/0xmun1r/IP.X/blob/main/image.png" width="300" height="200">
 </p>
 
-
 <p align="center">
   <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=700&size=22&pause=1000&center=true&width=435&lines=🛡️+IP.X+-+The+Digital+Vanguard;🌐+Uncover+Origin+IP+Behind+WAF%2FCDN;🧠+OSINT+%2B+Active+Recon+Powered+Tool" alt="Typing SVG" />
 </p>
-
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge">
