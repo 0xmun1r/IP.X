@@ -42,6 +42,8 @@ git clone https://github.com/0xmun1r/IP.X
 cd IP.X
 python3 -m pip install --user -r requirements.txt
 python3 ip_x/cli.py target.com --active --passive --verbose
+
+pipx uninstall IP.X && pipx install . --force   # if any issue run this command
 ```
 ⚠️ Make sure Python 3.8+ is installed in your Kali/Linux system
 
