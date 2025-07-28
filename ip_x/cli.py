@@ -7,7 +7,9 @@ import json
 import dns.resolver
 import dns.reversename # For reverse DNS lookups
 import shodan
-import censys.search
+# UPDATED: Import CensysSearch class directly and CensysException for modern handling
+from censys.search import CensysSearch
+from censys.errors import CensysException
 import socket # For basic port scanning
 import ipaddress # For IP address validation
 import re # For regex, useful for parsing headers
@@ -268,7 +270,7 @@ def query_censys_for_domain(target_domain, censys_api_id, censys_api_secret, ver
         return []
 
     try:
-        c = censys.search.CensysSearch(api_id=censys_api_id, api_secret=censys_api_secret)
+        c = CensysSearch(api_id=censys_api_id, api_secret=censys_api_secret)
 
         if verbose: print_colored(f"  [Censys] Querying Censys for hosts related to domain: {target_domain}", Fore.LIGHTBLACK_EX, prefix="  ")
 
@@ -280,7 +282,7 @@ def query_censys_for_domain(target_domain, censys_api_id, censys_api_secret, ver
                 ips.add(ip_addr)
                 if verbose: print_colored(f"  [Censys] Found IP: {ip_addr}", Fore.CYAN, prefix="  ")
 
-    except censys.base.CensysException as e:
+    except CensysException as e:
         if "Authentication failed" in str(e):
             print_colored(f"  [Censys] Error: Censys Authentication failed. Check your API ID and Secret.", Fore.RED, prefix="  ")
         elif "No results found" in str(e) or "query returned no results" in str(e):
@@ -395,7 +397,6 @@ def find_subdomains_from_sources(target_domain, api_keys, verbose=False):
         if verbose: print_colored(f"  [Subdomain-TC] Error querying ThreatCrowd: {e}", Fore.RED, prefix="  ")
     except json.JSONDecodeError as e:
         if verbose: print_colored(f"  [Subdomain-TC] Error decoding ThreatCrowd JSON: {e}", Fore.RED, prefix="  ")
-
     return sorted(list(found_subdomains))
 
 
@@ -634,7 +635,7 @@ def passive_scan(target, verbose=False, api_keys=None):
             if sub_a_records or sub_aaaa_records:
                 if verbose: print_colored(f"      [Subdomain DNS] Resolved IPs for {subdomain}: {list(set(sub_a_records + sub_aaaa_records))}", Fore.LIGHTCYAN_EX, prefix="      ")
     else:
-        print_colored(f"  [INFO] No additional subdomains found.", Fore.YELLOW, prefix="  ")
+        print_colored("  [INFO] No additional subdomains found.", Fore.YELLOW, prefix="  ")
 
 
     print_colored(f"\n[*] Performing Reverse DNS lookups on collected IPs...", Fore.WHITE)
@@ -657,7 +658,7 @@ def passive_scan(target, verbose=False, api_keys=None):
 # --- Main function: orchestrates the scan ---
 
 def main():
-    # ASCII Art Banner (UPDATED with Version 1 and Developer 0xmun1r)
+    # ASCII Art Banner (UPDATED with Version 0.0.1 and Developer 0xmun1r)
     banner = f"""
 {Fore.LIGHTCYAN_EX}{Style.BRIGHT}
   ___   ___      __  __
