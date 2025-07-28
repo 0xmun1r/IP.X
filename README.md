@@ -39,11 +39,26 @@
 ```bash
 git clone https://github.com/0xmun1r/IP.X
 cd IP.X
-pip3 install -r requirements.txt
-python3 ipx.py --help
+python3 -m pip install --user -r requirements.txt
+python3 ip_x/cli.py target.com --active --passive --verbose
 ```
 ⚠️ Make sure Python 3.8+ is installed in your Kali/Linux system
 
+Add Your API Keys (Optional, but for full power):
+
+In the current folder (/home/m0n1r/Downloads/IP.X), create a file named api_keys.json.
+
+Open this file with a text editor (like nano api_keys.json or gedit api_keys.json).
+
+Paste your keys inside, replacing the placeholder text:
+```
+{
+  "shodan_api_key": "YOUR_ACTUAL_SHODAN_API_KEY_HERE",
+  "censys_api_id": "YOUR_CENSYS_API_ID_HERE",
+  "censys_api_secret": "YOUR_CENSYS_API_SECRET_HERE",
+  "virustotal_api_key": "YOUR_VIRUTSTOTAL_API_KEY_HERE"
+}
+```
 📂 Usage
 bash
 Copy
