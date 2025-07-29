@@ -7,7 +7,6 @@ import json
 import dns.resolver
 import dns.reversename # For reverse DNS lookups
 import shodan
-# UPDATED: Import CensysSearch class directly and CensysException for modern handling
 from censys.search import CensysSearch
 from censys.errors import CensysException
 import socket # For basic port scanning
@@ -16,6 +15,10 @@ import re # For regex, useful for parsing headers
 import os # For os.getcwd() to find api_keys.json automatically
 from urllib.parse import urlparse # For parsing URLs
 from colorama import Fore, Style, Back, init # For colored output
+import urllib3 # To disable InsecureRequestWarning
+
+# Disable InsecureRequestWarning for direct IP connections (verify=False)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Initialize Colorama for cross-platform compatibility and auto-reset
 init(autoreset=True)
@@ -31,6 +34,10 @@ PUBLIC_DNS_RESOLVERS = [
 
 # Certificate Transparency Log endpoint
 CRT_SH_URL = "https://crt.sh/?q=%25.{domain}&output=json"
+
+# API Base URLs for new integrations
+SECURITYTRAILS_BASE_URL = "https://api.securitytrails.com/v1"
+URLSCAN_IO_SEARCH_URL = "https://urlscan.io/api/v1/search/?q=domain:{domain}" # For passive historical lookups
 
 # Common HTTP/S ports for active scanning
 COMMON_WEB_PORTS = [80, 443, 8080, 8443]
@@ -293,6 +300,107 @@ def query_censys_for_domain(target_domain, censys_api_id, censys_api_secret, ver
         print_colored(f"  [Censys] An unexpected error occurred while querying Censys: {e}", Fore.RED, prefix="  ")
     return list(ips)
 
+def query_securitytrails(target_domain, securitytrails_api_key, verbose=False):
+    """
+    Queries SecurityTrails for historical DNS, subdomains, and associated IPs.
+    Returns (list of IPs, list of subdomains)
+    """
+    ips = set()
+    subdomains = set()
+
+    if not securitytrails_api_key:
+        if verbose: print_colored("  [SecurityTrails] API key not provided. Skipping SecurityTrails query.", Fore.YELLOW, prefix="  ")
+        return [], []
+
+    headers = {
+        "APIKEY": securitytrails_api_key,
+        "Accept": "application/json"
+    }
+
+    if verbose: print_colored(f"  [SecurityTrails] Querying for subdomains and historical DNS for {target_domain}...", Fore.LIGHTBLACK_EX, prefix="  ")
+
+    # --- Get Subdomains ---
+    subdomain_url = f"{SECURITYTRAILS_BASE_URL}/domain/{target_domain}/subdomains"
+    try:
+        response = requests.get(subdomain_url, headers=headers, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if 'subdomains' in data:
+            for sd in data['subdomains']:
+                full_subdomain = f"{sd}.{target_domain}".lower()
+                subdomains.add(full_subdomain)
+                if verbose: print_colored(f"    [SecurityTrails] Found subdomain: {full_subdomain}", Fore.CYAN, prefix="    ")
+    except requests.exceptions.RequestException as e:
+        if verbose: print_colored(f"  [SecurityTrails] Error querying subdomains: {e}", Fore.RED, prefix="  ")
+    except json.JSONDecodeError as e:
+        if verbose: print_colored(f"  [SecurityTrails] Error decoding subdomain JSON: {e}", Fore.RED, prefix="  ")
+
+    # --- Get Historical DNS (A records) ---
+    history_url = f"{SECURITYTRAILS_BASE_URL}/history/{target_domain}/dns/a"
+    try:
+        response = requests.get(history_url, headers=headers, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if 'records' in data:
+            for record_entry in data['records']:
+                for ip_record in record_entry.get('values', []):
+                    ip_addr = ip_record.get('ip')
+                    if ip_addr and is_valid_ip(ip_addr):
+                        ips.add(ip_addr)
+                        if verbose: print_colored(f"    [SecurityTrails] Found historical IP: {ip_addr}", Fore.CYAN, prefix="    ")
+    except requests.exceptions.RequestException as e:
+        if verbose: print_colored(f"  [SecurityTrails] Error querying historical DNS: {e}", Fore.RED, prefix="  ")
+    except json.JSONDecodeError as e:
+        if verbose: print_colored(f"  [SecurityTrails] Error decoding historical DNS JSON: {e}", Fore.RED, prefix="  ")
+
+    return list(ips), list(subdomains)
+
+def query_urlscan_io(target_domain, verbose=False):
+    """
+    Queries URLScan.io for passive IP and WAF detection from historical scans.
+    Returns (list of IPs, list of detected WAFs from headers)
+    """
+    ips = set()
+    wafs_from_urlscan = set()
+
+    if verbose: print_colored(f"  [URLScan.io] Querying URLScan.io for historical scans of {target_domain}...", Fore.LIGHTBLACK_EX, prefix="  ")
+
+    url = URLSCAN_IO_SEARCH_URL.format(domain=target_domain)
+    try:
+        # urlscan.io search API usually doesn't require an API key for public data.
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        if 'results' in data:
+            for result in data['results']:
+                if 'page' in result and 'url' in result['page'] and target_domain in result['page']['url']:
+                    # Extract IP
+                    if 'ip' in result['page'] and is_valid_ip(result['page']['ip']):
+                        ips.add(result['page']['ip'])
+                        if verbose: print_colored(f"    [URLScan.io] Found IP: {result['page']['ip']}", Fore.CYAN, prefix="    ")
+                    
+                    # Extract and check headers (simplified for initial integration)
+                    # For a deeper dive, you'd typically fetch the full report JSON (result['task']['reportURL'])
+                    # and then parse headers from its HTTP request/response objects.
+                    # For now, we'll check directly available server headers from the summary if present.
+                    if 'dom' in result and 'server' in result['dom']:
+                        # This is a very basic check, as full headers are not always in summary.
+                        # Consider expanding this by fetching 'reportURL' for more comprehensive header analysis.
+                        simplified_headers = {'Server': result['dom']['server']}
+                        current_detected_wafs = detect_waf(simplified_headers, "", verbose=False) # Don't be verbose here to avoid double-printing
+                        wafs_from_urlscan.update(current_detected_wafs)
+
+
+    except requests.exceptions.RequestException as e:
+        if verbose: print_colored(f"  [URLScan.io] Error querying URLScan.io: {e}", Fore.RED, prefix="  ")
+    except json.JSONDecodeError as e:
+        if verbose: print_colored(f"  [URLScan.io] Error decoding URLScan.io JSON: {e}", Fore.RED, prefix="  ")
+    except Exception as e:
+        if verbose: print_colored(f"  [URLScan.io] An unexpected error occurred with URLScan.io: {e}", Fore.RED, prefix="  ")
+
+    return list(ips), list(wafs_from_urlscan)
+
 def extract_ips_from_email_header(raw_email_headers, verbose=False):
     """
     Parses raw email headers (typically 'Received:' lines) to extract IP addresses.
@@ -397,6 +505,15 @@ def find_subdomains_from_sources(target_domain, api_keys, verbose=False):
         if verbose: print_colored(f"  [Subdomain-TC] Error querying ThreatCrowd: {e}", Fore.RED, prefix="  ")
     except json.JSONDecodeError as e:
         if verbose: print_colored(f"  [Subdomain-TC] Error decoding ThreatCrowd JSON: {e}", Fore.RED, prefix="  ")
+    
+    # 4. SecurityTrails for subdomains (added via its function call)
+    securitytrails_api_key = api_keys.get('securitytrails_api_key') if api_keys else None
+    if securitytrails_api_key:
+        _, st_subdomains = query_securitytrails(target_domain, securitytrails_api_key, verbose)
+        found_subdomains.update(st_subdomains)
+    elif verbose:
+        print_colored("  [Subdomain-ST] SecurityTrails API key not provided or empty. Skipping subdomain query.", Fore.YELLOW, prefix="  ")
+
     return sorted(list(found_subdomains))
 
 
@@ -524,7 +641,11 @@ def perform_active_scan(target_domain, potential_ips, verbose=False):
             url = f"{scheme}://{ip}/"
             try:
                 if verbose: print_colored(f"  [Active] Attempting direct {scheme} connection to {ip} with Host: {target_domain}", Fore.LIGHTBLACK_EX, prefix="  ")
-                response = requests.get(url, headers=headers, timeout=7, allow_redirects=True, verify=False)
+                # Suppress InsecureRequestWarning for self-signed certs or cert mismatches during direct IP connection
+                with requests.Session() as s:
+                    s.verify = False # Do not verify SSL certs for direct IP connections
+                    response = s.get(url, headers=headers, timeout=7, allow_redirects=True)
+
 
                 content_match = target_domain in response.text or \
                                 f"https://{target_domain}" in response.text or \
@@ -567,6 +688,7 @@ def passive_scan(target, verbose=False, api_keys=None):
     found_ips = set()
     found_hostnames = set()
     found_subdomains = set()
+    detected_wafs_passive = set() # To collect WAFs found during passive (e.g., from URLScan.io)
 
     print_colored("\n--- Starting Passive Scan ---", Fore.BLUE, prefix="")
 
@@ -617,12 +739,40 @@ def passive_scan(target, verbose=False, api_keys=None):
             found_ips.add(ip)
     else:
         print_colored("  [INFO] Censys did not return additional IPs or API keys were missing/invalid.", Fore.YELLOW, prefix="  ")
+    
+    # --- NEW: SecurityTrails Integration ---
+    print_colored(f"\n[*] Querying SecurityTrails for historical data related to {target}...", Fore.WHITE)
+    securitytrails_api_key = api_keys.get('securitytrails_api_key') if api_keys else None
+    st_ips, st_subdomains = query_securitytrails(target, securitytrails_api_key, verbose)
+    if st_ips:
+        print_colored(f"  [SUCCESS] SecurityTrails found {len(st_ips)} potential IP(s).", Fore.GREEN, prefix="  ")
+        for ip in st_ips:
+            print_colored(f"    - {ip}", Fore.CYAN, prefix="    ")
+            found_ips.add(ip)
+    if st_subdomains:
+        print_colored(f"  [SUCCESS] SecurityTrails found {len(st_subdomains)} subdomain(s).", Fore.GREEN, prefix="  ")
+        found_subdomains.update(st_subdomains) # Add to general subdomains list
+    else:
+        print_colored("  [INFO] SecurityTrails did not return additional IPs/subdomains or API key was missing/invalid.", Fore.YELLOW, prefix="  ")
 
-    # --- New Passive Additions ---
+    # --- NEW: URLScan.io Integration (Passive) ---
+    print_colored(f"\n[*] Querying URLScan.io for passive IP data...", Fore.WHITE)
+    urlscan_ips, urlscan_wafs = query_urlscan_io(target, verbose)
+    if urlscan_ips:
+        print_colored(f"  [SUCCESS] URLScan.io found {len(urlscan_ips)} potential IP(s).", Fore.GREEN, prefix="  ")
+        for ip in urlscan_ips:
+            print_colored(f"    - {ip}", Fore.CYAN, prefix="    ")
+            found_ips.add(ip)
+    else:
+        print_colored("  [INFO] URLScan.io did not return additional IPs.", Fore.YELLOW, prefix="  ")
+    if urlscan_wafs:
+        print_colored(f"  [SUCCESS] URLScan.io found {len(urlscan_wafs)} WAF(s) signatures.", Fore.MAGENTA, prefix="  ")
+        detected_wafs_passive.update(urlscan_wafs)
 
+    # --- Subdomain Enumeration (now includes SecurityTrails) ---
     print_colored(f"\n[*] Enumerating subdomains from various sources for {target}...", Fore.WHITE)
     discovered_subdomains = find_subdomains_from_sources(target, api_keys, verbose)
-    found_subdomains.update(discovered_subdomains)
+    found_subdomains.update(discovered_subdomains) # This updates with CRTSH, VT, ThreatCrowd, and ST subdomains
     if found_subdomains:
         print_colored(f"  [SUCCESS] Subdomain enumeration found {len(found_subdomains)} subdomain(s).", Fore.GREEN, prefix="  ")
         # Resolve IPs for discovered subdomains
@@ -652,7 +802,7 @@ def passive_scan(target, verbose=False, api_keys=None):
         print_colored("  [INFO] No additional hostnames from reverse DNS.", Fore.YELLOW, prefix="  ")
 
     print_colored("\n--- Passive Scan Complete ---", Fore.BLUE, prefix="")
-    return list(found_ips)
+    return list(found_ips), list(detected_wafs_passive) # Return both IPs and passive WAFs
 
 
 # --- Main function: orchestrates the scan ---
@@ -714,7 +864,7 @@ def main():
         type=str,
         metavar="FILE",
         default="api_keys.json", # Automatically looks for api_keys.json in CWD
-        help="Path to a file containing API keys (e.g., Shodan, Censys, VirusTotal) in JSON format.\n"
+        help="Path to a file containing API keys (e.g., Shodan, Censys, VirusTotal, SecurityTrails) in JSON format.\n"
              "Defaults to 'api_keys.json' in the current directory if not specified."
     )
 
@@ -760,8 +910,9 @@ def main():
     detected_wafs_overall = set()
 
     if args.passive:
-        passive_ips = passive_scan(args.target, args.verbose, api_keys)
+        passive_ips, passive_wafs = passive_scan(args.target, args.verbose, api_keys)
         all_found_ips.update(passive_ips)
+        detected_wafs_overall.update(passive_wafs) # Add WAFs found during passive scan
         print_colored(f"\nPassive scan found {len(passive_ips)} potential IP(s).", Fore.MAGENTA)
         for ip in passive_ips:
             print_colored(f"  - {ip}", Fore.CYAN, prefix="  ")
