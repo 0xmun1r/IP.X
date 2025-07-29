@@ -1,6 +1,8 @@
 {
-  "shodan_api_key": "YOUR_ACTUAL_SHODAN_API_KEY_HERE",
-  "censys_api_id": "YOUR_CENSYS_API_ID_HERE",
-  "censys_api_secret": "YOUR_CENSYS_API_SECRET_HERE",
-  "virustotal_api_key": "YOUR_VIRUSTOTAL_API_KEY_HERE"
+  "shodan_api_key": "YOUR_SHODAN_API_KEY",
+  "censys_api_id": "YOUR_CENSYS_API_ID",
+  "censys_api_secret": "YOUR_CENSYS_API_SECRET",
+  "virustotal_api_key": "YOUR_VIRUSTOTAL_API_KEY",
+  "securitytrails_api_key": "YOUR_SECURITYTRAILS_API_KEY"
+  // "urlscan_api_key": "YOUR_URLSCAN_IO_API_KEY" // Uncomment and add if you use private URLScan.io features
 }
