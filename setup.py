@@ -10,9 +10,10 @@ setup(
     install_requires=[
         'dnspython',
         'shodan',
-        'censys>=2.2.0', # Pinning version to ensure compatibility
+        # 'censys>=2.2.0', # Censys removed
         'requests',
         'colorama',
+        'mmh3', # Added for favicon hashing
         # ipaddress is typically built-in, no need to list explicitly
     ],
     entry_points={
