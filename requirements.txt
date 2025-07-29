@@ -1,5 +1,6 @@
 dnspython
 shodan
-censys>=2.2.0
+# censys>=2.2.0 # Censys removed
 requests
 colorama
+mmh3
