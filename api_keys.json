@@ -1,8 +1,10 @@
 {
   "shodan_api_key": "YOUR_SHODAN_API_KEY",
-  "censys_api_id": "YOUR_CENSYS_API_ID",
-  "censys_api_secret": "YOUR_CENSYS_API_SECRET",
+  // "censys_api_id": "YOUR_CENSYS_API_ID",     // Censys Removed
+  // "censys_api_secret": "YOUR_CENSYS_API_SECRET", // Censys Removed
   "virustotal_api_key": "YOUR_VIRUSTOTAL_API_KEY",
-  "securitytrails_api_key": "YOUR_SECURITYTRAILS_API_KEY"
-  // "urlscan_api_key": "YOUR_URLSCAN_IO_API_KEY" // Uncomment and add if you use private URLScan.io features
+  "securitytrails_api_key": "YOUR_SECURITYTRAILS_API_KEY",
+  "ipinfo_api_key": "YOUR_IPINFO_API_KEY",       // New: Free tier allows limited requests
+  "viewdns_api_key": "YOUR_VIEWDNS_API_KEY"      // New: Free tier allows limited requests
+  // "urlscan_api_key": "YOUR_URLSCAN_IO_API_KEY" // Not strictly needed for public search, but for private features
 }
