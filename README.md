@@ -25,14 +25,47 @@
 
 ---
 
+# IP.X: The Advanced IP Finder & WAF Detector
+
 ## ⚙️ Features
 
-- 🌐 Passive recon with multiple online sources
-- 🚀 Active probing to detect misconfigurations
-- 💾 Output saving for further analysis
-- 🎭 Verbose & silent modes
-- 🧪 Clean modular Python code
+IP.X employs a multi-faceted approach to IP discovery and WAF detection, including:
 
+**Passive Reconnaissance:**
+* **DNS Records:** Fetches A, AAAA, CNAME records.
+* **Certificate Transparency Logs (crt.sh):** Discovers historical IPs and subdomains from public certificate data.
+* **GitHub Pages Detection:** Identifies if a domain or subdomain is hosted on GitHub Pages.
+* **Shodan:** Queries historical IP information and open ports/services associated with the target domain.
+* **Favicon Hashing (with Shodan):** Calculates the favicon hash and searches Shodan for other IPs/domains sharing the same hash, revealing related infrastructure.
+* **VirusTotal:** Gathers subdomains via VirusTotal's API.
+* **ThreatCrowd:** Collects additional subdomains from ThreatCrowd data.
+* **SecurityTrails:** Utilizes SecurityTrails for historical DNS records and extensive subdomain enumeration.
+* **URLScan.io:** Queries public scan results for historical IPs and server headers.
+* **Wayback Machine (Archive.org):** Retrieves historical IP addresses associated with the domain.
+* **ASN IP Range Expansion (via IPinfo.io):** Discovers full IP ranges belonging to the target's Autonomous System Number.
+* **Reverse IP Lookup (via ViewDNS.info):** Finds other domains hosted on the same IP address, revealing shared hosting.
+* **Subdomain Brute-Forcing:** Actively probes for common subdomains using an internal wordlist.
+* **Reverse DNS Lookups:** Translates discovered IP addresses back to hostnames.
+* **Email Header Analysis:** Can extract public IPs from raw email headers (if provided).
+
+**Active Reconnaissance:**
+* **Port Scanning:** Checks common web ports (80, 443, 8080, 8443) on potential origin IPs.
+* **Direct HTTP/S Probing:** Attempts direct connections to potential origin IPs, bypassing CDNs/WAFs using `Host` headers.
+* **WAF/CDN Detection:** Analyzes HTTP response headers and body for signatures of known WAFs and CDNs.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed on your Linux system:
+
+* `git`: For cloning the repository.
+* `python3`: Python 3.8+ is recommended.
+* `python3-pip`: The package installer for Python 3.
+
+**For Debian/Kali Linux:**
+```bash
+sudo apt update -y
+sudo apt install git python3-pip -y
+```
 ---
 
 ## `/// 🚀 DEPLOYMENT PROTOCOL //`
@@ -40,10 +73,9 @@
 ### `[+] Installation (No VirtualEnv)`
 
 ```bash
-git clone [https://github.com/0xmun1r/IP.X](https://github.com/0xmun1r/IP.X)
+git clone https://github.com/0xmun1r/IP.X.git
 cd IP.X
 python3 -m pip install --user -r requirements.txt
-python3 ip_x/cli.py target.com --active --passive --verbose
 ```
 ```
 Add Your API Keys (Optional, but for full power):
@@ -56,32 +88,41 @@ Open this file with a text editor (like nano api_keys.json or gedit api_keys.jso
 Paste your keys inside, replacing the placeholder text:
 ```
 {
-  "shodan_api_key": "YOUR_ACTUAL_SHODAN_API_KEY_HERE",
-  "censys_api_id": "YOUR_CENSYS_API_ID_HERE",
-  "censys_api_secret": "YOUR_CENSYS_API_SECRET_HERE",
-  "virustotal_api_key": "YOUR_VIRUTSTOTAL_API_KEY_HERE"
+  "shodan_api_key": "YOUR_SHODAN_API_KEY",
+  "virustotal_api_key": "YOUR_VIRUTOTAL_API_KEY",
+  "securitytrails_api_key": "YOUR_SECURITYTRAILS_API_KEY",
+  "ipinfo_api_key": "YOUR_IPINFO_API_KEY",
+  "viewdns_api_key": "YOUR_VIEWDNS_API_KEY"
 }
 ```
 ---
 
 📂 Usage
+Basic scan with both active and passive modes, verbose output
 ```
-IP.X --target example.com --active --output result.txt
+IP.X example.com --active --passive --verbose
 ```
-🔧 Available Flags
+Example: Using a specific API keys file
 ```
-| Flag        | Description                           |
-| ----------- | ------------------------------------- |
-| `--target`  | 🎯 Target domain (e.g., `target.com`) |
-| `--active`  | 🚀 Enable active probing              |
-| `--passive` | 🕵️ Use passive techniques only       |
-| `--output`  | 💾 Save results to file               |
-| `--silent`  | 🤫 Clean output (no banner/logs)      |
-| `--verbose` | 📢 Detailed logs                      |
-| `--help`    | 📖 Display usage instructions         |
+IP.X example.com --active --passive --api_keys /path/to/your/api_keys.json
 ```
-
-🧪 Scan Examples
+Example: Saving results to a file
+```
+IP.X example.com --passive --output found_ips.txt
+```
+Example: Only passive reconnaissance
+```
+IP.X example.com --passive
+```
+Example: Only active reconnaissance (will try to resolve IPs first)
+```
+IP.X example.com --active
+```
+Show help message (banner will also be displayed)
+```
+IP.X --help
+```
+# 🧪 Scan Examples
 ```
 🔍 Passive :  IP.X --target example.com --passive
 ⚔️ Active  :  IP.X --target example.com --active --output out.txt
@@ -92,11 +133,9 @@ IP.X --target example.com --active --output result.txt
 **`v1.0 // Code-Name: DIGITAL_VANGUARD`**
 `_ The Architect: 0xmun1d _`
 
-
 ---
 
 ## `/// SYSTEM STATUS ///`
-
 
 *(**Note:** Replace `your-username` in the badge links with your actual GitHub username. You may need to set up GitHub Actions for the Build Status badge to work.)*
 
