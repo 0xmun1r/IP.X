@@ -7,7 +7,7 @@ import json
 import dns.resolver
 import dns.reversename # For reverse DNS lookups
 import shodan
-# Censys imports removed
+# Censys imports removed as per request
 import socket # For basic port scanning
 import ipaddress # For IP address validation
 import re # For regex, useful for parsing headers
@@ -15,7 +15,14 @@ import os # For os.getcwd() to find api_keys.json automatically
 from urllib.parse import urlparse # For parsing URLs
 from colorama import Fore, Style, Back, init # For colored output
 import urllib3 # To disable InsecureRequestWarning
-import hashlib # For favicon hashing
+import hashlib # For general hashing (though mmh3 is preferred for favicon)
+
+# Try to import mmh3 for Shodan favicon hash. If not available, we'll note it.
+try:
+    import mmh3
+    HAS_MMH3 = True
+except ImportError:
+    HAS_MMH3 = False
 
 # Disable InsecureRequestWarning for direct IP connections (verify=False)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -132,7 +139,7 @@ SUBDOMAIN_SOURCES = {
     'threatcrowd': "https://threatcrowd.org/searchLb.php?domain={domain}", # Basic, often rate-limited/unreliable
 }
 
-# Common subdomains for brute-forcing
+# Common subdomains for brute-forcing (can be expanded from external wordlists)
 COMMON_SUBDOMAINS = [
     'www', 'mail', 'ftp', 'dev', 'test', 'blog', 'api', 'admin', 'portal', 'webmail',
     'autodiscover', 'cpanel', 'vpn', 'docs', 'ns1', 'ns2', 'cloud', 'app', 'cdn',
@@ -184,6 +191,9 @@ def get_dns_records(target_domain, record_type, verbose=False):
     try:
         resolver = dns.resolver.Resolver()
         resolver.nameservers = PUBLIC_DNS_RESOLVERS
+        # DNS queries can sometimes be slow; setting a timeout can prevent hangs
+        resolver.timeout = 5
+        resolver.lifetime = 5
         answers = resolver.resolve(target_domain, record_type)
         for rdata in answers:
             record_str = str(rdata)
@@ -194,6 +204,8 @@ def get_dns_records(target_domain, record_type, verbose=False):
         if verbose: print_colored(f"  [DNS-{record_type}] No {record_type} records found for {target_domain}.", Fore.YELLOW, prefix="  ")
     except dns.resolver.NXDOMAIN:
         if verbose: print_colored(f"  [DNS-{record_type}] Domain {target_domain} does not exist.", Fore.RED, prefix="  ")
+    except dns.exception.Timeout:
+        if verbose: print_colored(f"  [DNS-{record_type}] DNS query timed out for {target_domain}.", Fore.RED, prefix="  ")
     except Exception as e:
         if verbose: print_colored(f"  [DNS-{record_type}] Error querying {record_type} records: {e}", Fore.RED, prefix="  ")
     return records
@@ -307,6 +319,10 @@ def query_shodan_by_favicon(favicon_hash, shodan_api_key, verbose=False):
         if verbose: print_colored("  [Shodan-Favicon] Shodan API key not provided. Skipping Favicon query.", Fore.YELLOW, prefix="  ")
         return []
 
+    if not HAS_MMH3:
+        if verbose: print_colored("  [Shodan-Favicon] mmh3 library not found. Cannot perform Shodan favicon query.", Fore.YELLOW, prefix="  ")
+        return []
+
     try:
         api = shodan.Shodan(shodan_api_key)
         query = f'http.favicon.hash:{favicon_hash}'
@@ -337,6 +353,10 @@ def get_favicon_hash(target_domain, verbose=False):
     Fetches the favicon of a domain and calculates its MurmurHash3 hash.
     Returns the hash as a string, or None if not found/error.
     """
+    if not HAS_MMH3:
+        if verbose: print_colored("  [Favicon] mmh3 library not found. Cannot calculate Shodan-compatible favicon hash. Please install with 'pip install mmh3'.", Fore.YELLOW, prefix="  ")
+        return None
+
     favicon_url = f"http://{target_domain}/favicon.ico"
     try:
         if verbose: print_colored(f"  [Favicon] Attempting to fetch favicon from: {favicon_url}", Fore.LIGHTBLACK_EX, prefix="  ")
@@ -344,18 +364,9 @@ def get_favicon_hash(target_domain, verbose=False):
         response.raise_for_status()
 
         if response.status_code == 200 and 'image' in response.headers.get('Content-Type', ''):
-            # Calculate MurmurHash3 (mmh3) - Shodan uses this
-            # Python's hashlib.sha256 is commonly used, Shodan might use a different algorithm or encoding.
-            # For exact Shodan matching, `mmh3` library is needed.
-            # If not installed, we can fall back to a common hash or skip.
-            try:
-                import mmh3
-                favicon_hash = mmh3.hash(response.content)
-                if verbose: print_colored(f"  [Favicon] Found and hashed favicon: {favicon_hash}", Fore.CYAN, prefix="  ")
-                return str(favicon_hash) # mmh3 returns int, convert to string
-            except ImportError:
-                if verbose: print_colored("  [Favicon] mmh3 library not found. Cannot calculate Shodan-compatible favicon hash.", Fore.YELLOW, prefix="  ")
-                return None # Indicate mmh3 is missing
+            favicon_hash = mmh3.hash(response.content) # Use mmh3
+            if verbose: print_colored(f"  [Favicon] Found and hashed favicon: {favicon_hash}", Fore.CYAN, prefix="  ")
+            return str(favicon_hash) # mmh3 returns int, convert to string
         else:
             if verbose: print_colored(f"  [Favicon] Favicon not found at {favicon_url} or not an image (Status: {response.status_code}).", Fore.YELLOW, prefix="  ")
             return None
@@ -364,7 +375,7 @@ def get_favicon_hash(target_domain, verbose=False):
         return None
     except Exception as e:
         if verbose: print_colored(f"  [Favicon] An unexpected error occurred with favicon: {e}", Fore.RED, prefix="  ")
-        return None
+    return None
 
 
 def query_securitytrails(target_domain, securitytrails_api_key, verbose=False):
@@ -436,7 +447,7 @@ def query_urlscan_io(target_domain, verbose=False):
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
-        data = response.json()
+        data = json.loads(response.text)
 
         if 'results' in data:
             for result in data['results']:
@@ -576,7 +587,7 @@ def query_reverse_ip_viewdns(ip_address, viewdns_api_key, verbose=False):
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
-        data = response.json()
+        data = json.loads(response.text)
 
         if 'response' in data and 'domains' in data['response']:
             for entry in data['response']['domains']:
@@ -607,8 +618,8 @@ def bruteforce_subdomains(target_domain, verbose=False):
 
     for subdomain_prefix in COMMON_SUBDOMAINS:
         test_subdomain = f"{subdomain_prefix}.{target_domain}"
-        if verbose: print_colored(f"    [Subdomain Brute-Force] Testing: {test_subdomain}", Fore.LIGHTBLACK_EX, prefix="    ")
-        a_records = get_dns_records(test_subdomain, 'A', verbose=False) # Don't be too verbose here
+        # Skip verbose DNS messages for each brute-force attempt, unless overall verbose is on
+        a_records = get_dns_records(test_subdomain, 'A', verbose=False)
         aaaa_records = get_dns_records(test_subdomain, 'AAAA', verbose=False)
 
         if a_records or aaaa_records:
@@ -659,6 +670,8 @@ def perform_reverse_dns(ip_address, verbose=False):
         addr = dns.reversename.from_address(ip_address)
         resolver = dns.resolver.Resolver()
         resolver.nameservers = PUBLIC_DNS_RESOLVERS
+        resolver.timeout = 5
+        resolver.lifetime = 5
         answers = resolver.resolve(addr, "PTR")
         for rdata in answers:
             hostname = str(rdata).rstrip('.')
@@ -668,6 +681,8 @@ def perform_reverse_dns(ip_address, verbose=False):
         if verbose: print_colored(f"  [Reverse DNS] No PTR record (NXDOMAIN) for {ip_address}.", Fore.YELLOW, prefix="  ")
     except dns.resolver.NoAnswer:
         if verbose: print_colored(f"  [Reverse DNS] No PTR answer for {ip_address}.", Fore.YELLOW, prefix="  ")
+    except dns.exception.Timeout:
+        if verbose: print_colored(f"  [Reverse DNS] Reverse DNS query timed out for {ip_address}.", Fore.RED, prefix="  ")
     except Exception as e:
         if verbose: print_colored(f"  [Reverse DNS] Error performing reverse DNS for {ip_address}: {e}", Fore.RED, prefix="  ")
     return list(hostnames)
@@ -693,7 +708,7 @@ def find_subdomains_from_sources(target_domain, api_keys, verbose=False):
         try:
             response = requests.get(vt_url, headers=headers, timeout=15)
             response.raise_for_status()
-            data = response.json()
+            data = json.loads(response.text)
             if 'data' in data:
                 for entry in data['data']:
                     if 'id' in entry and entry['type'] == 'subdomain':
@@ -734,7 +749,7 @@ def find_subdomains_from_sources(target_domain, api_keys, verbose=False):
     elif verbose:
         print_colored("  [Subdomain-ST] SecurityTrails API key not provided or empty. Skipping subdomain query.", Fore.YELLOW, prefix="  ")
     
-    # 5. Subdomain Brute-Force
+    # 5. Subdomain Brute-Force (using COMMON_SUBDOMAINS list)
     brute_force_subdomains = bruteforce_subdomains(target_domain, verbose)
     found_subdomains.update(brute_force_subdomains)
 
@@ -952,7 +967,7 @@ def passive_scan(target, verbose=False, api_keys=None):
     else:
         print_colored("  [INFO] Shodan did not return additional IPs or API key was missing/invalid.", Fore.YELLOW, prefix="  ")
     
-    # Censys section removed here
+    # Censys section removed from here
 
     # --- NEW: SecurityTrails Integration ---
     print_colored(f"\n[*] Querying SecurityTrails for historical data related to {target}...", Fore.WHITE)
@@ -1112,16 +1127,16 @@ def main():
  |___| |_|   (_) /_/\_\
                        
 {Style.RESET_ALL}
-{Fore.WHITE}{Style.BRIGHT}        The IP Finder{Style.RESET_ALL}
+{Fore.WHITE}{Style.BRIGHT}        The ORIGIN IP Finder{Style.RESET_ALL}
 {Fore.MAGENTA}{Style.BRIGHT}        Version: 0.0.1{Style.RESET_ALL}
 {Fore.YELLOW}{Style.BRIGHT}        Developer: 0xmun1r{Style.RESET_ALL}
 {Fore.CYAN}{Style.BRIGHT}
-=============================================
-     {Fore.GREEN}WEB APPLICATION ORIGIN IP DETECTOR{Style.RESET_ALL}{Fore.CYAN}{Style.BRIGHT}
-==============================================
+===========================================================
+     {Fore.GREEN}WEB APPLICATION ORIGIN IP & FIREWALL DETECTOR{Style.RESET_ALL}{Fore.CYAN}{Style.BRIGHT}
+===========================================================
 {Style.RESET_ALL}
     """
-    print(banner)
+    print(banner) # Moved to the very beginning of main()
 
     parser = argparse.ArgumentParser(
         description=f"{Fore.CYAN}IP.X - An origin IP finder behind WAF and CDN, with WAF detection capabilities.{Style.RESET_ALL}",
