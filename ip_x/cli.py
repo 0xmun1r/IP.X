@@ -1121,10 +1121,10 @@ def main():
     # ASCII Art Banner (UPDATED with Version 0.0.1 and Developer 0xmun1r)
     banner = f"""
 {Fore.LIGHTCYAN_EX}{Style.BRIGHT}
-  ___   ___      __  __
- |_ _| | _ \     \ \/ /
-  | |  |  _/  _   >  < 
- |___| |_|   (_) /_/\_\
+       ___   ___      __  __
+      |_ _| | _ \     \ \/ /
+       | |  |  _/  _   >  < 
+      |___| |_|   (_) /_/\_\
                        
 {Style.RESET_ALL}
 {Fore.WHITE}{Style.BRIGHT}        The ORIGIN IP Finder{Style.RESET_ALL}
