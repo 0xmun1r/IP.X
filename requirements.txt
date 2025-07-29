@@ -1,6 +1,5 @@
-# requirements.txt
-requests
 dnspython
 shodan
-censys
+censys>=2.2.0
+requests
 colorama
