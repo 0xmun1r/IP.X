@@ -7,8 +7,7 @@ import json
 import dns.resolver
 import dns.reversename # For reverse DNS lookups
 import shodan
-from censys.search import CensysSearch
-from censys.errors import CensysException
+# Censys imports removed
 import socket # For basic port scanning
 import ipaddress # For IP address validation
 import re # For regex, useful for parsing headers
@@ -16,6 +15,7 @@ import os # For os.getcwd() to find api_keys.json automatically
 from urllib.parse import urlparse # For parsing URLs
 from colorama import Fore, Style, Back, init # For colored output
 import urllib3 # To disable InsecureRequestWarning
+import hashlib # For favicon hashing
 
 # Disable InsecureRequestWarning for direct IP connections (verify=False)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -38,6 +38,9 @@ CRT_SH_URL = "https://crt.sh/?q=%25.{domain}&output=json"
 # API Base URLs for new integrations
 SECURITYTRAILS_BASE_URL = "https://api.securitytrails.com/v1"
 URLSCAN_IO_SEARCH_URL = "https://urlscan.io/api/v1/search/?q=domain:{domain}" # For passive historical lookups
+IPINFO_API_URL = "https://ipinfo.io/{}/json" # For ASN and IP range lookup
+WAYBACK_CDX_URL = "http://web.archive.org/cdx/search/cdx?url={}/&output=json&fl=original,urlkey,timestamp,statuscode,digest,length,mime_type,ip,redirect&filter=statuscode:200|301|302"
+VIEWDNS_REVERSE_IP_URL = "https://api.viewdns.info/reverseip/?host={ip}&apikey={api_key}&output=json" # For Reverse IP lookup
 
 # Common HTTP/S ports for active scanning
 COMMON_WEB_PORTS = [80, 443, 8080, 8443]
@@ -128,6 +131,34 @@ SUBDOMAIN_SOURCES = {
     'crtsh_subdomains': "https://crt.sh/?q=%25.{domain}&output=json", # Already used for IPs, but good for subdomains too
     'threatcrowd': "https://threatcrowd.org/searchLb.php?domain={domain}", # Basic, often rate-limited/unreliable
 }
+
+# Common subdomains for brute-forcing
+COMMON_SUBDOMAINS = [
+    'www', 'mail', 'ftp', 'dev', 'test', 'blog', 'api', 'admin', 'portal', 'webmail',
+    'autodiscover', 'cpanel', 'vpn', 'docs', 'ns1', 'ns2', 'cloud', 'app', 'cdn',
+    'secure', 'stage', 'beta', 'demo', 'status', 'forum', 'shop', 'store', 'media',
+    'assets', 'files', 'support', 'wiki', 'crm', 'erp', 'hr', 'intranet', 'extranet',
+    'jira', 'confluence', 'jenkins', 'gitlab', 'github', 'sso', 'login', 'register',
+    'dashboard', 'control', 'manage', 'remote', 'gateway', 'proxy', 'monitor', 'metrics',
+    'db', 'sql', 'mysql', 'postgres', 'redis', 'mongo', 'es', 'elastic', 'kafka',
+    'uat', 'prod', 'staging', 'qa', 'live', 'development', 'acceptance', 'test',
+    'backup', 'archive', 'old', 'new', 'vps', 'server', 'client', 'partner',
+    'public', 'private', 'external', 'internal', 'service', 'services', 'data',
+    'reports', 'graphs', 'stats', 'sys', 'system', 'logs', 'audit', 'monitor', 'nagios',
+    'zabbix', 'grafana', 'kibana', 'splunk', 'rancher', 'kubernetes', 'kube',
+    'prometheus', 'alertmanager', 'vault', 'consul', 'nomad', 'nexus', 'artifactory',
+    'registry', 'harbor', 'docker', 'swarm', 'ci', 'cd', 'build', 'monitor',
+    'download', 'downloads', 'dl', 'cdn', 'static', 'images', 'img', 'video', 'videos',
+    'audio', 'voice', 'stream', 'streaming', 'cast', 'player', 'play', 'go', 'get',
+    'join', 'meet', 'chat', 'talk', 'connect', 'community', 'groups', 'members',
+    'news', 'events', 'calendar', 'directory', 'list', 'status', 'help', 'faq',
+    'kb', 'knowledge', 'docs', 'manual', 'guide', 'tutorial', 'training', 'learn',
+    'academy', 'university', 'campus', 'student', 'faculty', 'alumni', 'careers',
+    'jobs', 'recruit', 'apply', 'candidates', 'onboarding', 'hris', 'pay', 'payroll',
+    'expense', 'travel', 'crm', 'sales', 'marketing', 'support', 'tickets', 'helpdesk',
+    'knowledgebase', 'supportcenter', 'adminpanel', 'controlpanel', 'webadmin',
+    'management', 'central', 'securelogin', 'my', 'portal', 'extranet', 'intranet'
+]
 
 
 # --- Color Helper Function ---
@@ -267,38 +298,74 @@ def query_shodan_for_domain(target_domain, shodan_api_key, verbose=False):
         print_colored(f"  [Shodan] An unexpected error occurred while querying Shodan: {e}", Fore.RED, prefix="  ")
     return list(ips)
 
-def query_censys_for_domain(target_domain, censys_api_id, censys_api_secret, verbose=False):
+def query_shodan_by_favicon(favicon_hash, shodan_api_key, verbose=False):
     """
-    Queries Censys for historical IP information related to the target domain.
+    Queries Shodan for hosts with a matching favicon hash.
     """
     ips = set()
-    if not censys_api_id or not censys_api_secret:
-        if verbose: print_colored("  [Censys] Censys API ID or Secret not provided. Skipping Censys query.", Fore.YELLOW, prefix="  ")
+    if not shodan_api_key:
+        if verbose: print_colored("  [Shodan-Favicon] Shodan API key not provided. Skipping Favicon query.", Fore.YELLOW, prefix="  ")
         return []
 
     try:
-        c = CensysSearch(api_id=censys_api_id, api_secret=censys_api_secret)
+        api = shodan.Shodan(shodan_api_key)
+        query = f'http.favicon.hash:{favicon_hash}'
+        if verbose: print_colored(f"  [Shodan-Favicon] Querying Shodan for favicon hash: {favicon_hash}", Fore.LIGHTBLACK_EX, prefix="  ")
 
-        if verbose: print_colored(f"  [Censys] Querying Censys for hosts related to domain: {target_domain}", Fore.LIGHTBLACK_EX, prefix="  ")
+        results = api.search(query)
 
-        query = f"services.dns.names: {target_domain} OR p443.certificates.leaf.subject.common_name: {target_domain} OR p443.certificates.leaf.subject_alt_names: {target_domain}"
+        for result in results['matches']:
+            ip_str = result['ip_str']
+            if is_valid_ip(ip_str):
+                ips.add(ip_str)
+                if verbose:
+                    print_colored(f"  [Shodan-Favicon] Found IP: {ip_str} (Favicon Match)", Fore.CYAN, prefix="  ")
 
-        for result in c.v2.hosts.search(query, fields=['ip'], per_page=50, pages=-1):
-            ip_addr = result['ip']
-            if is_valid_ip(ip_addr):
-                ips.add(ip_addr)
-                if verbose: print_colored(f"  [Censys] Found IP: {ip_addr}", Fore.CYAN, prefix="  ")
-
-    except CensysException as e:
-        if "Authentication failed" in str(e):
-            print_colored(f"  [Censys] Error: Censys Authentication failed. Check your API ID and Secret.", Fore.RED, prefix="  ")
-        elif "No results found" in str(e) or "query returned no results" in str(e):
-             if verbose: print_colored(f"  [Censys] No results found for {target_domain} on Censys.", Fore.YELLOW, prefix="  ")
+    except shodan.APIError as e:
+        if "No information available for that search query" in str(e):
+            if verbose: print_colored(f"  [Shodan-Favicon] No results found for favicon hash {favicon_hash} on Shodan.", Fore.YELLOW, prefix="  ")
+        elif "Invalid API key" in str(e):
+            print_colored(f"  [Shodan-Favicon] Error: Invalid Shodan API key for Favicon query.", Fore.RED, prefix="  ")
         else:
-            print_colored(f"  [Censys] Censys API Error: {e}", Fore.RED, prefix="  ")
+            print_colored(f"  [Shodan-Favicon] Shodan API Error (Favicon): {e}", Fore.RED, prefix="  ")
     except Exception as e:
-        print_colored(f"  [Censys] An unexpected error occurred while querying Censys: {e}", Fore.RED, prefix="  ")
+        print_colored(f"  [Shodan-Favicon] An unexpected error occurred while querying Shodan (Favicon): {e}", Fore.RED, prefix="  ")
     return list(ips)
+
+def get_favicon_hash(target_domain, verbose=False):
+    """
+    Fetches the favicon of a domain and calculates its MurmurHash3 hash.
+    Returns the hash as a string, or None if not found/error.
+    """
+    favicon_url = f"http://{target_domain}/favicon.ico"
+    try:
+        if verbose: print_colored(f"  [Favicon] Attempting to fetch favicon from: {favicon_url}", Fore.LIGHTBLACK_EX, prefix="  ")
+        response = requests.get(favicon_url, timeout=5, verify=False)
+        response.raise_for_status()
+
+        if response.status_code == 200 and 'image' in response.headers.get('Content-Type', ''):
+            # Calculate MurmurHash3 (mmh3) - Shodan uses this
+            # Python's hashlib.sha256 is commonly used, Shodan might use a different algorithm or encoding.
+            # For exact Shodan matching, `mmh3` library is needed.
+            # If not installed, we can fall back to a common hash or skip.
+            try:
+                import mmh3
+                favicon_hash = mmh3.hash(response.content)
+                if verbose: print_colored(f"  [Favicon] Found and hashed favicon: {favicon_hash}", Fore.CYAN, prefix="  ")
+                return str(favicon_hash) # mmh3 returns int, convert to string
+            except ImportError:
+                if verbose: print_colored("  [Favicon] mmh3 library not found. Cannot calculate Shodan-compatible favicon hash.", Fore.YELLOW, prefix="  ")
+                return None # Indicate mmh3 is missing
+        else:
+            if verbose: print_colored(f"  [Favicon] Favicon not found at {favicon_url} or not an image (Status: {response.status_code}).", Fore.YELLOW, prefix="  ")
+            return None
+    except requests.exceptions.RequestException as e:
+        if verbose: print_colored(f"  [Favicon] Error fetching favicon: {e}", Fore.RED, prefix="  ")
+        return None
+    except Exception as e:
+        if verbose: print_colored(f"  [Favicon] An unexpected error occurred with favicon: {e}", Fore.RED, prefix="  ")
+        return None
+
 
 def query_securitytrails(target_domain, securitytrails_api_key, verbose=False):
     """
@@ -367,7 +434,6 @@ def query_urlscan_io(target_domain, verbose=False):
 
     url = URLSCAN_IO_SEARCH_URL.format(domain=target_domain)
     try:
-        # urlscan.io search API usually doesn't require an API key for public data.
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         data = response.json()
@@ -381,12 +447,7 @@ def query_urlscan_io(target_domain, verbose=False):
                         if verbose: print_colored(f"    [URLScan.io] Found IP: {result['page']['ip']}", Fore.CYAN, prefix="    ")
                     
                     # Extract and check headers (simplified for initial integration)
-                    # For a deeper dive, you'd typically fetch the full report JSON (result['task']['reportURL'])
-                    # and then parse headers from its HTTP request/response objects.
-                    # For now, we'll check directly available server headers from the summary if present.
                     if 'dom' in result and 'server' in result['dom']:
-                        # This is a very basic check, as full headers are not always in summary.
-                        # Consider expanding this by fetching 'reportURL' for more comprehensive header analysis.
                         simplified_headers = {'Server': result['dom']['server']}
                         current_detected_wafs = detect_waf(simplified_headers, "", verbose=False) # Don't be verbose here to avoid double-printing
                         wafs_from_urlscan.update(current_detected_wafs)
@@ -400,6 +461,165 @@ def query_urlscan_io(target_domain, verbose=False):
         if verbose: print_colored(f"  [URLScan.io] An unexpected error occurred with URLScan.io: {e}", Fore.RED, prefix="  ")
 
     return list(ips), list(wafs_from_urlscan)
+
+def get_asn_ips(ip_address, ipinfo_api_key=None, verbose=False):
+    """
+    Queries ipinfo.io for ASN and associated IP ranges.
+    Returns a list of IPs from the ASN.
+    """
+    ips_from_asn = set()
+    if not is_valid_ip(ip_address):
+        if verbose: print_colored(f"  [ASN] Skipping invalid IP for ASN lookup: {ip_address}", Fore.YELLOW, prefix="  ")
+        return []
+    
+    headers = {}
+    if ipinfo_api_key:
+        headers["Authorization"] = f"Bearer {ipinfo_api_key}"
+
+    try:
+        # Get ASN for the given IP
+        ip_details_url = IPINFO_API_URL.format(ip_address)
+        if verbose: print_colored(f"  [ASN] Querying ipinfo.io for IP details: {ip_details_url}", Fore.LIGHTBLACK_EX, prefix="  ")
+        response = requests.get(ip_details_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if 'asn' in data and data['asn']:
+            asn_id = data['asn']
+            if verbose: print_colored(f"    [ASN] Found ASN for {ip_address}: {asn_id}", Fore.CYAN, prefix="    ")
+
+            # Query for all prefixes (IP ranges) associated with this ASN
+            asn_details_url = IPINFO_API_URL.format(asn_id)
+            if verbose: print_colored(f"  [ASN] Querying ipinfo.io for ASN prefixes: {asn_details_url}", Fore.LIGHTBLACK_EX, prefix="  ")
+            response = requests.get(asn_details_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            asn_data = response.json()
+
+            if 'prefixes' in asn_data:
+                for prefix_entry in asn_data['prefixes']:
+                    cidr = prefix_entry.get('cidr')
+                    if cidr:
+                        try:
+                            network = ipaddress.ip_network(cidr, strict=False)
+                            # Add the network address itself
+                            ips_from_asn.add(str(network.network_address))
+                            # For larger networks, add a few more for variety without being too aggressive
+                            if network.num_addresses > 1 and network.num_addresses < 256: # Limit enumeration for smaller networks
+                                for i, host in enumerate(network.hosts()):
+                                    if i >= 3: break # Add first 3 hosts
+                                    ips_from_asn.add(str(host))
+                            
+                            if verbose: print_colored(f"      [ASN] Found prefix: {cidr}", Fore.CYAN, prefix="      ")
+                        except ValueError:
+                            if verbose: print_colored(f"      [ASN] Invalid CIDR format: {cidr}", Fore.YELLOW, prefix="      ")
+            elif verbose:
+                print_colored(f"    [ASN] No prefixes found for ASN {asn_id}.", Fore.YELLOW, prefix="    ")
+        elif verbose:
+            print_colored(f"    [ASN] No ASN found for IP {ip_address}.", Fore.YELLOW, prefix="    ")
+
+    except requests.exceptions.RequestException as e:
+        if verbose: print_colored(f"  [ASN] Error querying ipinfo.io: {e}", Fore.RED, prefix="  ")
+    except json.JSONDecodeError as e:
+        if verbose: print_colored(f"  [ASN] Error decoding ipinfo.io JSON response: {e}", Fore.RED, prefix="  ")
+    except Exception as e:
+        if verbose: print_colored(f"  [ASN] An unexpected error occurred with ASN lookup: {e}", Fore.RED, prefix="  ")
+    
+    return list(ips_from_asn)
+
+def query_wayback_machine(target_domain, verbose=False):
+    """
+    Queries Wayback Machine (Archive.org) for historical IPs.
+    Returns a list of IPs.
+    """
+    ips = set()
+    url = WAYBACK_CDX_URL.format(target_domain)
+    if verbose: print_colored(f"  [Wayback] Querying Wayback Machine: {url}", Fore.LIGHTBLACK_EX, prefix="  ")
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        # The CDX API returns a list of lists (CSV-like JSON)
+        data = json.loads(response.text)
+
+        # The first element is typically headers, skip it
+        if data and len(data) > 1:
+            headers = data[0]
+            ip_index = headers.index('ip') if 'ip' in headers else -1
+
+            for entry in data[1:]: # Iterate from the second element (actual data)
+                if ip_index != -1 and len(entry) > ip_index:
+                    ip_addr = entry[ip_index]
+                    if ip_addr and is_valid_ip(ip_addr):
+                        ips.add(ip_addr)
+                        if verbose: print_colored(f"    [Wayback] Found historical IP: {ip_addr}", Fore.CYAN, prefix="    ")
+
+    except requests.exceptions.RequestException as e:
+        if verbose: print_colored(f"  [Wayback] Error querying Wayback Machine: {e}", Fore.RED, prefix="  ")
+    except json.JSONDecodeError as e:
+        if verbose: print_colored(f"  [Wayback] Error decoding Wayback Machine JSON response: {e}", Fore.RED, prefix="  ")
+    except Exception as e:
+        if verbose: print_colored(f"  [Wayback] An unexpected error occurred with Wayback Machine: {e}", Fore.RED, prefix="  ")
+    
+    return list(ips)
+
+def query_reverse_ip_viewdns(ip_address, viewdns_api_key, verbose=False):
+    """
+    Queries ViewDNS.info for other domains hosted on the same IP.
+    Returns a list of domains.
+    """
+    domains = set()
+    if not viewdns_api_key:
+        if verbose: print_colored("  [ReverseIP] ViewDNS.info API key not provided. Skipping Reverse IP lookup.", Fore.YELLOW, prefix="  ")
+        return []
+
+    url = VIEWDNS_REVERSE_IP_URL.format(ip=ip_address, api_key=viewdns_api_key)
+    if verbose: print_colored(f"  [ReverseIP] Querying ViewDNS.info for reverse IP: {ip_address}...", Fore.LIGHTBLACK_EX, prefix="  ")
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        if 'response' in data and 'domains' in data['response']:
+            for entry in data['response']['domains']:
+                domain_name = entry.get('name')
+                if domain_name:
+                    domains.add(domain_name)
+                    if verbose: print_colored(f"    [ReverseIP] Found domain on {ip_address}: {domain_name}", Fore.CYAN, prefix="    ")
+        elif 'response' in data and 'error' in data['response']:
+            if verbose: print_colored(f"  [ReverseIP] Error from ViewDNS.info for {ip_address}: {data['response']['error']}", Fore.RED, prefix="  ")
+        else:
+            if verbose: print_colored(f"  [ReverseIP] No domains found for {ip_address} via ViewDNS.info.", Fore.YELLOW, prefix="  ")
+
+    except requests.exceptions.RequestException as e:
+        if verbose: print_colored(f"  [ReverseIP] Error querying ViewDNS.info: {e}", Fore.RED, prefix="  ")
+    except json.JSONDecodeError as e:
+        if verbose: print_colored(f"  [ReverseIP] Error decoding ViewDNS.info JSON: {e}", Fore.RED, prefix="  ")
+    except Exception as e:
+        if verbose: print_colored(f"  [ReverseIP] An unexpected error occurred with Reverse IP: {e}", Fore.RED, prefix="  ")
+    return list(domains)
+
+
+def bruteforce_subdomains(target_domain, verbose=False):
+    """
+    Performs basic subdomain brute-forcing using a common wordlist.
+    """
+    found_subdomains = set()
+    if verbose: print_colored(f"\n  [Subdomain Brute-Force] Starting brute-force for {target_domain}...", Fore.LIGHTBLACK_EX, prefix="  ")
+
+    for subdomain_prefix in COMMON_SUBDOMAINS:
+        test_subdomain = f"{subdomain_prefix}.{target_domain}"
+        if verbose: print_colored(f"    [Subdomain Brute-Force] Testing: {test_subdomain}", Fore.LIGHTBLACK_EX, prefix="    ")
+        a_records = get_dns_records(test_subdomain, 'A', verbose=False) # Don't be too verbose here
+        aaaa_records = get_dns_records(test_subdomain, 'AAAA', verbose=False)
+
+        if a_records or aaaa_records:
+            found_subdomains.add(test_subdomain)
+            if verbose: print_colored(f"      [Subdomain Brute-Force] Found: {test_subdomain} -> IPs: {list(set(a_records + aaaa_records))}", Fore.CYAN, prefix="      ")
+    
+    if verbose and not found_subdomains:
+        print_colored("  [Subdomain Brute-Force] No new subdomains found via brute-force with common list.", Fore.YELLOW, prefix="  ")
+
+    return list(found_subdomains)
+
 
 def extract_ips_from_email_header(raw_email_headers, verbose=False):
     """
@@ -513,6 +733,10 @@ def find_subdomains_from_sources(target_domain, api_keys, verbose=False):
         found_subdomains.update(st_subdomains)
     elif verbose:
         print_colored("  [Subdomain-ST] SecurityTrails API key not provided or empty. Skipping subdomain query.", Fore.YELLOW, prefix="  ")
+    
+    # 5. Subdomain Brute-Force
+    brute_force_subdomains = bruteforce_subdomains(target_domain, verbose)
+    found_subdomains.update(brute_force_subdomains)
 
     return sorted(list(found_subdomains))
 
@@ -727,19 +951,9 @@ def passive_scan(target, verbose=False, api_keys=None):
             found_ips.add(ip)
     else:
         print_colored("  [INFO] Shodan did not return additional IPs or API key was missing/invalid.", Fore.YELLOW, prefix="  ")
-
-    print_colored(f"\n[*] Querying Censys for historical data related to {target}...", Fore.WHITE)
-    censys_api_id = api_keys.get('censys_api_id') if api_keys else None
-    censys_api_secret = api_keys.get('censys_api_secret') if api_keys else None
-    censys_ips = query_censys_for_domain(target, censys_api_id, censys_api_secret, verbose)
-    if censys_ips:
-        print_colored(f"  [SUCCESS] Censys found {len(censys_ips)} potential IP(s).", Fore.GREEN, prefix="  ")
-        for ip in censys_ips:
-            print_colored(f"    - {ip}", Fore.CYAN, prefix="    ")
-            found_ips.add(ip)
-    else:
-        print_colored("  [INFO] Censys did not return additional IPs or API keys were missing/invalid.", Fore.YELLOW, prefix="  ")
     
+    # Censys section removed here
+
     # --- NEW: SecurityTrails Integration ---
     print_colored(f"\n[*] Querying SecurityTrails for historical data related to {target}...", Fore.WHITE)
     securitytrails_api_key = api_keys.get('securitytrails_api_key') if api_keys else None
@@ -769,23 +983,104 @@ def passive_scan(target, verbose=False, api_keys=None):
         print_colored(f"  [SUCCESS] URLScan.io found {len(urlscan_wafs)} WAF(s) signatures.", Fore.MAGENTA, prefix="  ")
         detected_wafs_passive.update(urlscan_wafs)
 
-    # --- Subdomain Enumeration (now includes SecurityTrails) ---
+    # --- NEW: Wayback Machine Integration ---
+    print_colored(f"\n[*] Querying Wayback Machine for historical IPs...", Fore.WHITE)
+    wayback_ips = query_wayback_machine(target, verbose)
+    if wayback_ips:
+        print_colored(f"  [SUCCESS] Wayback Machine found {len(wayback_ips)} potential IP(s).", Fore.GREEN, prefix="  ")
+        for ip in wayback_ips:
+            print_colored(f"    - {ip}", Fore.CYAN, prefix="    ")
+            found_ips.add(ip)
+    else:
+        print_colored("  [INFO] Wayback Machine did not return additional IPs.", Fore.YELLOW, prefix="  ")
+
+    # --- NEW: Favicon Hashing with Shodan ---
+    shodan_api_key = api_keys.get('shodan_api_key') if api_keys else None
+    if shodan_api_key:
+        favicon_hash_val = get_favicon_hash(target, verbose)
+        if favicon_hash_val:
+            print_colored(f"\n[*] Querying Shodan for IPs with matching favicon hash...", Fore.WHITE)
+            shodan_favicon_ips = query_shodan_by_favicon(favicon_hash_val, shodan_api_key, verbose)
+            if shodan_favicon_ips:
+                print_colored(f"  [SUCCESS] Shodan (Favicon) found {len(shodan_favicon_ips)} potential IP(s).", Fore.GREEN, prefix="  ")
+                for ip in shodan_favicon_ips:
+                    print_colored(f"    - {ip}", Fore.CYAN, prefix="    ")
+                    found_ips.add(ip)
+            else:
+                print_colored("  [INFO] Shodan (Favicon) did not return additional IPs.", Fore.YELLOW, prefix="  ")
+    elif verbose:
+        print_colored("  [Favicon] Shodan API key not provided. Skipping Favicon lookup.", Fore.YELLOW, prefix="  ")
+
+
+    # --- Subdomain Enumeration (now includes SecurityTrails & Brute-Force) ---
     print_colored(f"\n[*] Enumerating subdomains from various sources for {target}...", Fore.WHITE)
+    # find_subdomains_from_sources now calls SecurityTrails and Brute-Force internally
     discovered_subdomains = find_subdomains_from_sources(target, api_keys, verbose)
-    found_subdomains.update(discovered_subdomains) # This updates with CRTSH, VT, ThreatCrowd, and ST subdomains
+    found_subdomains.update(discovered_subdomains) 
     if found_subdomains:
         print_colored(f"  [SUCCESS] Subdomain enumeration found {len(found_subdomains)} subdomain(s).", Fore.GREEN, prefix="  ")
         # Resolve IPs for discovered subdomains
         for subdomain in found_subdomains:
-            print_colored(f"    - {subdomain}", Fore.CYAN, prefix="    ")
+            # We already resolve IPs for each subdomain in bruteforce_subdomains,
+            # but this loop ensures all found subdomains from all sources get their IPs resolved.
+            # Avoid re-printing if already verbose in the specific function.
+            if verbose: print_colored(f"    - {subdomain}", Fore.CYAN, prefix="    ")
             sub_a_records = get_dns_records(subdomain, 'A', verbose)
             found_ips.update(sub_a_records)
             sub_aaaa_records = get_dns_records(subdomain, 'AAAA', verbose)
             found_ips.update(sub_aaaa_records)
-            if sub_a_records or sub_aaaa_records:
-                if verbose: print_colored(f"      [Subdomain DNS] Resolved IPs for {subdomain}: {list(set(sub_a_records + sub_aaaa_records))}", Fore.LIGHTCYAN_EX, prefix="      ")
+            if (sub_a_records or sub_aaaa_records) and verbose:
+                print_colored(f"      [Subdomain DNS] Resolved IPs for {subdomain}: {list(set(sub_a_records + sub_aaaa_records))}", Fore.LIGHTCYAN_EX, prefix="      ")
     else:
         print_colored("  [INFO] No additional subdomains found.", Fore.YELLOW, prefix="  ")
+    
+    # --- NEW: ASN IP Lookup (after initial IP collection) ---
+    ipinfo_api_key = api_keys.get('ipinfo_api_key') if api_keys else None
+    if ipinfo_api_key:
+        print_colored(f"\n[*] Performing ASN lookups on collected IPs...", Fore.WHITE)
+        initial_ips_for_asn_check = list(found_ips) # Take a snapshot of IPs found so far
+        asn_found_ips = set()
+        for ip in initial_ips_for_asn_check:
+            new_ips = get_asn_ips(ip, ipinfo_api_key, verbose)
+            asn_found_ips.update(new_ips)
+        
+        if asn_found_ips:
+            print_colored(f"  [SUCCESS] ASN lookup found {len(asn_found_ips)} additional potential IP(s).", Fore.GREEN, prefix="  ")
+            for ip in asn_found_ips:
+                print_colored(f"    - {ip}", Fore.CYAN, prefix="    ")
+                found_ips.add(ip)
+        else:
+            print_colored("  [INFO] ASN lookup did not return additional IPs.", Fore.YELLOW, prefix="  ")
+    elif verbose:
+        print_colored("  [ASN] IPinfo.io API key not provided. Skipping ASN lookup.", Fore.YELLOW, prefix="  ")
+
+    # --- NEW: Reverse IP Lookup (after all IPs are collected) ---
+    viewdns_api_key = api_keys.get('viewdns_api_key') if api_keys else None
+    if viewdns_api_key:
+        print_colored(f"\n[*] Performing Reverse IP lookups on collected IPs...", Fore.WHITE)
+        all_current_ips = list(found_ips) # Snapshot current IPs for reverse lookup
+        reverse_ip_found_domains = set()
+        for ip in all_current_ips:
+            # For each IP found, try to find other domains on it
+            new_domains = query_reverse_ip_viewdns(ip, viewdns_api_key, verbose)
+            if new_domains:
+                reverse_ip_found_domains.update(new_domains)
+                # For each new domain found, resolve its IPs as well
+                for new_domain in new_domains:
+                    if verbose: print_colored(f"    [ReverseIP] Resolving IPs for new domain {new_domain}...", Fore.LIGHTBLACK_EX, prefix="    ")
+                    new_domain_a = get_dns_records(new_domain, 'A', verbose=False)
+                    new_domain_aaaa = get_dns_records(new_domain, 'AAAA', verbose=False)
+                    found_ips.update(new_domain_a)
+                    found_ips.update(new_domain_aaaa)
+                    if (new_domain_a or new_domain_aaaa) and verbose:
+                        print_colored(f"      [ReverseIP DNS] Resolved IPs for {new_domain}: {list(set(new_domain_a + new_domain_aaaa))}", Fore.LIGHTCYAN_EX, prefix="      ")
+        if reverse_ip_found_domains:
+            print_colored(f"  [SUCCESS] Reverse IP lookup found {len(reverse_ip_found_domains)} additional domains.", Fore.GREEN, prefix="  ")
+            # The IPs from these domains are already added to found_ips
+        else:
+            print_colored("  [INFO] Reverse IP lookup did not return additional domains.", Fore.YELLOW, prefix="  ")
+    elif verbose:
+        print_colored("  [ReverseIP] ViewDNS.info API key not provided. Skipping Reverse IP lookup.", Fore.YELLOW, prefix="  ")
 
 
     print_colored(f"\n[*] Performing Reverse DNS lookups on collected IPs...", Fore.WHITE)
@@ -821,9 +1116,9 @@ def main():
 {Fore.MAGENTA}{Style.BRIGHT}        Version: 0.0.1{Style.RESET_ALL}
 {Fore.YELLOW}{Style.BRIGHT}        Developer: 0xmun1r{Style.RESET_ALL}
 {Fore.CYAN}{Style.BRIGHT}
-=======================================
-     {Fore.GREEN}WEB APPLICATION FIREWALL DETECTOR{Style.RESET_ALL}{Fore.CYAN}{Style.BRIGHT}
-=======================================
+=============================================
+     {Fore.GREEN}WEB APPLICATION ORIGIN IP DETECTOR{Style.RESET_ALL}{Fore.CYAN}{Style.BRIGHT}
+==============================================
 {Style.RESET_ALL}
     """
     print(banner)
@@ -864,7 +1159,7 @@ def main():
         type=str,
         metavar="FILE",
         default="api_keys.json", # Automatically looks for api_keys.json in CWD
-        help="Path to a file containing API keys (e.g., Shodan, Censys, VirusTotal, SecurityTrails) in JSON format.\n"
+        help="Path to a file containing API keys (e.g., Shodan, VirusTotal, SecurityTrails, IPinfo.io, ViewDNS.info) in JSON format.\n"
              "Defaults to 'api_keys.json' in the current directory if not specified."
     )
 
