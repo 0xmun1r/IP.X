@@ -122,6 +122,15 @@ Show help message (banner will also be displayed)
 ```
 IP.X --help
 ```
+
+## 🚀 Quick Start (Termux)
+
+Run the tool using:
+
+```bash
+python3 ip_x/cli.py target.com --active --passive --verbose
+```
+
 # 🧪 Scan Examples
 ```
 🔍 Passive :  IP.X --target example.com --passive
